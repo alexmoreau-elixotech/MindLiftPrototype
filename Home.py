@@ -42,3 +42,4 @@ def Home():
     for elem in available_courses:
         if st.button(elem):
             st.session_state['selected_course'] = elem
+            st.experimental_rerun()
