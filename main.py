@@ -8,4 +8,7 @@ if 'selected_course' not in st.session_state:
 if st.session_state['selected_course'] == None:
     Home()
 else:
+    if st.button("Back"):
+        st.session_state['selected_course'] = None
+        st.experimental_rerun()
     CoursePage(st.session_state['selected_course'])

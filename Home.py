@@ -26,9 +26,17 @@ def Home():
             os.makedirs(f"./courses/{subject}/{keys}", exist_ok=True)
             write_dict_to_file(f"./courses/{subject}/{keys}/sections.json", sections[keys])
             for sec in sections[keys]:
-                subsection = conn.generate_subsections(sections[keys][sec])
+                subsection, full_content = conn.generate_subsections(sections[keys][sec])
                 os.makedirs(f"./courses/{subject}/{keys}/{sec}", exist_ok=True)
                 write_list_to_file(f"./courses/{subject}/{keys}/{sec}/content.json", subsection)
+
+                exercises = conn.get_exercises_types_and_couts(full_content)
+
+                math_problems = conn.generate_math_exercises(full_content, exercises["Math problem"])
+                write_list_to_file(f"./courses/{subject}/{keys}/{sec}/math_problems.json", math_problems)
+
+            # TODO remove when done debugging
+            break
 
         available_courses.append(subject)
 

@@ -75,7 +75,48 @@ class AI_connector:
             parsed_text.append({"type": "text", "content": ai_response[last_pos:]})
         
         return parsed_text
-        
+    
+    def _extract_exercises_types_and_counts(self, ai_response):
+        print(ai_response)
+        # Split the text into lines
+        lines = ai_response.strip().split('\n')
+
+        # Initialize an empty dictionary
+        result = {}
+
+        # Iterate through each line
+        for line in lines:
+            # Split the line by the colon
+            key, value = line.split(':')
+            # Trim whitespace and convert value to an integer
+            result[key.strip()] = int(value.strip())
+
+        return result
+    
+    def _extract_math_exercise(self, ai_response):
+        print(ai_response)
+        # Extract variables section
+        variables_section = re.search(r'=== Variables(.*?)=== Problem', ai_response, re.DOTALL).group(1).strip()
+
+        # Extract values in the variables section
+        variables = re.findall(r'(\w|θ)\d?\s*=\s*(\S+)', variables_section)
+        variables_dict = {key: value for key, value in variables}
+
+        # Extract problem section
+        problem_section = re.search(r'=== Problem(.*?)=== Solution', ai_response, re.DOTALL).group(1).strip()
+
+        # Extract solution section
+        solution_section = re.search(r'=== Solution(.*)', ai_response, re.DOTALL).group(1).strip()
+
+        # Extract values in the solution section
+        solution = re.findall(r'(\w|θ)\d?\s*=\s*(\S+)', solution_section)
+        solution_dict = {key: value for key, value in solution}
+
+        # Combine dictionaries
+        result = {"variables": variables_dict, "problem": problem_section, "solution": solution_dict}
+
+        return result
+    
     def generate_course_chapters(self, subject):
         chat_completion = self.client.chat.completions.create(
                 messages=[
@@ -84,7 +125,7 @@ class AI_connector:
                         "content": """You are an online teacher.  
                                       You need to build complete courses plans that would allow anyone to learn anything, 
                                       including all prior knowledge needed.  For example, a chapter or two on classical physics is needed for quantum physics.  
-                                      Assume every student only knows how to read and do basic arithmetics.  
+                                      Assume every student only knows how to read and do basic arithmetic.  
                                       The course needs to be easy to understand for everyone, but attain undergraduate level.
                                       Only give the chapter titles and description.  No course title, no course description.
                                       ### Output example ###
@@ -116,17 +157,88 @@ class AI_connector:
         return chapter_sections
             
     def generate_subsections(self, section):
-        subsections = self._generate_section_subsections(section["title"], section["description"])
+        subsections, unformatted_subsections = self._generate_section_subsections(section["title"], section["description"])
 
-        return subsections
+        return subsections, unformatted_subsections
 
+    def get_exercises_types_and_couts(self, content):
+        chat_completion = self.client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """You are an online teacher.  You need to build exercises to let the students practice the material.  
+                                      They can be one of four types:
+                                      - Math problem
+                                      - Coding problem
+                                      - Words association
+                                      - Single-choice questions
+
+                                      Tell me what type of questions is appropriate for the content, 
+                                      and tell me how many of each type should be created.
+
+                                      ### Output example
+                                      Math problem: 3
+                                      Coding problem: 0
+                                      Words association: 2
+                                      Single-choice questions: 5
+                                      """,
+                    },
+                    {
+                        "role": "user",
+                        "content": f"{content}"
+                    }
+                ],
+                model="gpt-4o-mini",
+        )
+        
+        return self._extract_exercises_types_and_counts(chat_completion.choices[0].message.content)
+    
+    def generate_math_exercises(self, content, count):
+        problems = []
+
+        for i in range(count):
+            chat_completion = self.client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": """You are an online teacher.  
+                                        You need to build exercises to let the students practice the material.  
+                                        We will be building math exercises based on the content I will provide you.  
+                                        You need to give me a very specific output.  
+                                        I need the useful variables (only the name of the variable, its value and units) 
+                                        for the problem identified so I can parse them automatically.  
+                                        Then I need the written problem.  
+                                        Then I need the solution (only the answer) to the problem. 
+                                        ### Output example
+                                        === Variables
+                                        c = ...
+                                        x = ...
+                                        \theta = ...
+                                        === Problem
+                                        ...
+                                        === Solution
+                                        y = ...
+                                        x = ...
+                                        """,
+                        },
+                        {
+                            "role": "user",
+                            "content": f"{content}"
+                        }
+                    ],
+                    model="gpt-4o-mini",
+            )
+            problems.append(self._extract_math_exercise(chat_completion.choices[0].message.content))
+
+        return problems
+    
     def _generate_chapter_sections(self, chapter_title, chapter_description):
         chat_completion = self.client.chat.completions.create(
                 messages=[
                     {
                         "role": "system",
                         "content": """You are an online teacher.  You need to build a learning chapter plan based on its title and description.  
-                                      Assume every student only knows how to read and do basic arithmetics.  
+                                      Assume every student only knows how to read and do basic arithmetic.  
                                       The material needs to be easy to understand for everyone, but attain undergraduate level.  
                                       Only give the section titles and description.  No course title, no course description.
                                       ### Output example ###
@@ -156,10 +268,11 @@ class AI_connector:
                         "role": "system",
                         "content": """You are an online teacher.  
                                       You need to build the subsection learning content based on its title and description.  
-                                      Assume every student only knows how to read and do basic arithmetics.  
+                                      Assume every student only knows how to read and do basic arithmetic.  
                                       The material needs to be easy to understand for everyone, but attain undergraduate level.  
                                       Go in-depth and use examples.  Any line of LaTeX needs to be written in [] for easy parsing.  
-                                      Only build the content.  We will deal with exercices later.  
+                                      Only build the content.  We will deal with exercises later.  
+                                      Format the content with markdown, starting at header 1 (#).
                                       """,
                     },
                     {
@@ -170,4 +283,4 @@ class AI_connector:
                 model="gpt-4o-mini",
         )
         
-        return self._extract_section_subsections(chat_completion.choices[0].message.content)
+        return self._extract_section_subsections(chat_completion.choices[0].message.content), chat_completion.choices[0].message.content
