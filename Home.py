@@ -35,6 +35,9 @@ def Home():
                 math_problems = conn.generate_math_exercises(full_content, exercises["Math problem"])
                 write_list_to_file(f"./courses/{subject}/{keys}/{sec}/math_problems.json", math_problems)
 
+                words_association_problems = conn.generate_words_association_exercises(full_content)
+                write_list_to_file(f"./courses/{subject}/{keys}/{sec}/words_association_problems.json", words_association_problems)
+
             # TODO remove when done debugging
             break
 

@@ -21,6 +21,8 @@ def CoursePage(course_name):
                         st.latex(item["content"])
 
                 st.markdown("# Exercises")
+
+                # region Math exercises
                 math_exercises = load_content(f"./courses/{course_name}/{keys}/{sec}/math_problems.json")
 
                 for m in math_exercises:
@@ -51,6 +53,45 @@ def CoursePage(course_name):
                                 st.write("Solution is incorrect")
                             else:
                                 st.write("Solution is correct!")
+
+                # region Words association
+                words_association_exercises = load_content(f"./courses/{course_name}/{keys}/{sec}/words_association_problems.json")
+
+                for m in words_association_exercises:
+                    i += 1
+                    st.markdown("## Words")
+                    for j in range(len(m["exercise"])):
+                        st.markdown(f"{j+1}. {m['exercise'][j][0]}")
+                    
+                    st.markdown("## Definitions")
+                    for j in range(len(m["exercise"])):
+                        st.markdown(f"{j+1}. {m['exercise'][j][1]}")
+
+                    st.markdown("## Solution")
+
+                    with st.form(f"words_association_problem_{i}"):
+                        solution_checker[f"words_association_problem_{i}"] = {}
+
+                        for v in m["solution"]:
+                            solution_checker[f"words_association_problem_{i}"][v] = {
+                                "solution": m["solution"][v] 
+                            }
+
+                            solution_checker[f"words_association_problem_{i}"][v]["answer"] = st.number_input(v, value=0)
+
+                        submitted = st.form_submit_button("Check")
+
+                        if submitted:
+                            correct = True
+                            for k in solution_checker[f"words_association_problem_{i}"]:
+                                if solution_checker[f"words_association_problem_{i}"][k]["solution"] != m["exercise"][solution_checker[f"words_association_problem_{i}"][k]["answer"]][1]:
+                                    correct = False
+
+                            if not correct:
+                                st.write("Solution is incorrect")
+                            else:
+                                st.write("Solution is correct!")
+
                     
 
 

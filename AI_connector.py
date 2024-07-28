@@ -1,6 +1,7 @@
 from openai import OpenAI
 import os
 import re
+import random
 
 class AI_connector:
     def __init__(self):
@@ -77,7 +78,6 @@ class AI_connector:
         return parsed_text
     
     def _extract_exercises_types_and_counts(self, ai_response):
-        print(ai_response)
         # Split the text into lines
         lines = ai_response.strip().split('\n')
 
@@ -93,30 +93,64 @@ class AI_connector:
 
         return result
     
-    def _extract_math_exercise(self, ai_response):
-        print(ai_response)
-        # Extract variables section
-        variables_section = re.search(r'=== Variables(.*?)=== Problem', ai_response, re.DOTALL).group(1).strip()
+    def _extract_math_exercises(self, ai_response):
+        # Split the text into exercises
+        exercises = re.split(r'### Exercise \d+', ai_response)[1:]
 
-        # Extract values in the variables section
-        variables = re.findall(r'(\w|θ)\d?\s*=\s*(\S+)', variables_section)
-        variables_dict = {key: value for key, value in variables}
+        exercise_list = []
 
-        # Extract problem section
-        problem_section = re.search(r'=== Problem(.*?)=== Solution', ai_response, re.DOTALL).group(1).strip()
+        # Process each exercise
+        for exercise in exercises:
+            exercise_data = {}
 
-        # Extract solution section
-        solution_section = re.search(r'=== Solution(.*)', ai_response, re.DOTALL).group(1).strip()
+            # Extract variables section
+            variables_section = re.search(r'=== Variables(.*?)=== Problem', exercise, re.DOTALL).group(1).strip()
+            variables = re.findall(r'(\w|θ)\d?\s*=\s*(\S+)', variables_section)
+            variables_dict = {key: value for key, value in variables}
+            exercise_data['variables'] = variables_dict
 
-        # Extract values in the solution section
-        solution = re.findall(r'(\w|θ)\d?\s*=\s*(\S+)', solution_section)
-        solution_dict = {key: value for key, value in solution}
+            # Extract problem section
+            problem_section = re.search(r'=== Problem(.*?)=== Solution', exercise, re.DOTALL).group(1).strip()
+            exercise_data['problem'] = problem_section
 
-        # Combine dictionaries
-        result = {"variables": variables_dict, "problem": problem_section, "solution": solution_dict}
+            # Extract solution section
+            solution_section = re.search(r'=== Solution(.*)', exercise, re.DOTALL).group(1).strip()
+            solution = re.findall(r'(\w|θ)\d?\s*=\s*(\S+)', solution_section)
+            solution_dict = {key: value for key, value in solution}
+            exercise_data['solution'] = solution_dict
+
+            exercise_list.append(exercise_data)
+
+        return exercise_list
+    
+    def _extract_words_association_exercise(self, ai_response):
+        # Split the text into lines
+        lines = ai_response.strip().split('\n')
+
+        # Initialize an empty dictionary
+        result = {}
+
+        # Iterate through each line
+        for line in lines:
+            if len(line.strip()) > 0:
+                # Split the line by the colon
+                key, value = line.split(':')
+
+                # Trim whitespace and convert value to an integer
+                result[key.strip()] = value.strip()
 
         return result
     
+    def create_words_association_exercise(self, problem):
+        solution = problem.copy()
+        words = list(problem.keys())
+        definitions = list(problem.values())
+        random.shuffle(definitions)
+
+        exercise = list(zip(words, definitions))
+
+        return {"exercise": exercise, "solution": solution}
+
     def generate_course_chapters(self, subject):
         chat_completion = self.client.chat.completions.create(
                 messages=[
@@ -169,7 +203,6 @@ class AI_connector:
                         "content": """You are an online teacher.  You need to build exercises to let the students practice the material.  
                                       They can be one of four types:
                                       - Math problem
-                                      - Coding problem
                                       - Words association
                                       - Single-choice questions
 
@@ -178,7 +211,6 @@ class AI_connector:
 
                                       ### Output example
                                       Math problem: 3
-                                      Coding problem: 0
                                       Words association: 2
                                       Single-choice questions: 5
                                       """,
@@ -196,24 +228,24 @@ class AI_connector:
     def generate_math_exercises(self, content, count):
         problems = []
 
-        for i in range(count):
-            chat_completion = self.client.chat.completions.create(
-                    messages=[
+        messages = [
                         {
                             "role": "system",
-                            "content": """You are an online teacher.  
+                            "content": f"""You are an online teacher.  
                                         You need to build exercises to let the students practice the material.  
                                         We will be building math exercises based on the content I will provide you.  
                                         You need to give me a very specific output.  
                                         I need the useful variables (only the name of the variable, its value and units) 
                                         for the problem identified so I can parse them automatically.  
                                         Then I need the written problem.  
-                                        Then I need the solution (only the answer) to the problem. 
+                                        Then I need the solution (only the answer) to the problem.  
+                                        Build {count} exercises based on all the provided content.  
+                                        For each exercise, build the following output:
                                         ### Output example
                                         === Variables
                                         c = ...
                                         x = ...
-                                        \theta = ...
+                                        \\theta = ...
                                         === Problem
                                         ...
                                         === Solution
@@ -223,12 +255,52 @@ class AI_connector:
                         },
                         {
                             "role": "user",
-                            "content": f"{content}"
+                            "content": content,
                         }
-                    ],
+                    ]
+        
+        problem_valid = False
+        while(not problem_valid):
+            chat_completion = self.client.chat.completions.create(
+                    messages=messages,
                     model="gpt-4o-mini",
             )
-            problems.append(self._extract_math_exercise(chat_completion.choices[0].message.content))
+            try:
+                tmp = self._extract_math_exercises(chat_completion.choices[0].message.content)
+                for data in tmp:
+                    if data["solution"] == {}:
+                        continue
+                problem_valid = True
+            except:
+                continue
+
+            problems = tmp
+
+        return problems
+    
+    def generate_words_association_exercises(self, content):
+        problems = []
+
+        chat_completion = self.client.chat.completions.create(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": """You are an online teacher.  You need to build exercises to let the students practice the material.  
+                                    We will be building words association exercises based on the content I will provide you.  
+                                    You need to give me a very specific output.  
+                                    Simply write the word, then a colon, then a space, then the definition of the word.
+                                    ### Output example
+                                    Word: Definition
+                                    """,
+                    },
+                    {
+                        "role": "user",
+                        "content": f"{content}"
+                    }
+                ],
+                model="gpt-4o-mini",
+                )
+        problems.append(self.create_words_association_exercise(self._extract_words_association_exercise(chat_completion.choices[0].message.content)))
 
         return problems
     
